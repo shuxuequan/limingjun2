@@ -53,6 +53,9 @@ const u8 TEXT_Buffer[]={"WarShipSTM32 IIC TEST"};
 #define SIZE sizeof(TEXT_Buffer)
 #define FLASH_SAVE_ADDR  0X0801FC00		//设置FLASH 保存地址(必须为偶数，且其值要大于本代码所占用FLASH的大小+0X08000000)
 ////////////////////////////////////////////////////////
+#define BLUEADDRESS_SIZE  12
+
+
 TimerHandle_t 	AutoReloadTimer_Handle;			//周期定时器句柄
 TimerHandle_t	OneShotTimer_Handle;			//单次定时器句柄
 
@@ -61,6 +64,9 @@ void OneShotCallback(TimerHandle_t xTimer);		//单次定时器回调函数
 
 
 static u8 blConnectflag; // 1连上 0未连上
+static u16 bladressmark;//0x55 说明被写过
+static u8 blueAddress[36];
+
 
 //二值信号量句柄
 SemaphoreHandle_t BinarySemaphore;	//二值信号量句柄
@@ -126,6 +132,13 @@ static void bluetooth_AT(uint8_t * string){
 static void bluetooth_print_init(){
 		bluetooth_AT("AT+PSWD=0000\r\n");
 		delay_ms(100);
+		memset(blueAddress,0x00,36);
+		STMFLASH_Read(FLASH_SAVE_ADDR+BLUEADDRESS_SIZE,&bladressmark,1);
+		if(0x55AA==bladressmark){
+			STMFLASH_Read(FLASH_SAVE_ADDR,(u16*)blueAddress,BLUEADDRESS_SIZE);
+		}else{
+		memset(blueAddress,0x00,36);
+		}
 }
 
 static u8 isbluetoothConnected(){
@@ -136,7 +149,27 @@ static u8 isbluetoothConnected(){
 
 
 static void bluetoothConnect(){
-		bluetooth_AT("AT+LINK=020E,3A,D0801E\r\n");
+		u8 bladdresstemp[36];
+		u8 print[36];
+		bladdresstemp[0]=blueAddress[0];
+		bladdresstemp[1]=blueAddress[1];
+		bladdresstemp[2]=blueAddress[2];
+		bladdresstemp[3]=blueAddress[3];
+		bladdresstemp[4]=',';
+		bladdresstemp[5]=blueAddress[4];
+		bladdresstemp[6]=blueAddress[5];
+		bladdresstemp[7]=',';
+		bladdresstemp[8]=blueAddress[6];
+		bladdresstemp[9]=blueAddress[7];
+		bladdresstemp[10]=blueAddress[8];
+		bladdresstemp[11]=blueAddress[9];
+		bladdresstemp[12]=blueAddress[10];
+		bladdresstemp[13]=blueAddress[11];
+		sprintf(print,"%s","AT+LINK=");
+		strcat(print,bladdresstemp);
+		strcat(print,"\r\n");
+		//bluetooth_AT("AT+LINK=020E,3A,D0801E\r\n");
+		bluetooth_AT(print);
 }
 
 int main(void)
@@ -235,6 +268,9 @@ void process_task(void *pvParameters)
 	u32 distancevaluedisp=0;
 	float motorvdisp;
 	u8 trigvalue[30];
+	u8 bufstring[30];
+	static u8 datatemp[30];
+	u8* bufpoint;
 	u8 i=0;
 	while(1)
 		{
@@ -254,106 +290,141 @@ void process_task(void *pvParameters)
 					if(uart1_dev.USART_RX_BUF[i]==0x9a)
 						break;
 				}
-				switch(uart1_dev.USART_RX_BUF[i])
-				{
-					case 0x9a:
-						switch(uart1_dev.USART_RX_BUF[i+1]){
-							case 0xaa://start
-							Enocode_start();
-							{
-								char temp[36] = "t3.txt=\"";
-								char buf[10];
-								char end[3]={0xff,0xff,0xff};
-								u8 i=0;
-	
-								sprintf(buf, "%d", distancevaluedisp/1000);
-								strcat(temp, buf);
-								strcat(temp, "\"");
-								strcat(temp, end);
-								usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
-	
-							}
-							{
-								char temp[36] = "t2.txt=\"";
-								char buf[10];
-								char end[3]={0xff,0xff,0xff};
-								u8 i=0;
-	
-								sprintf(buf, "%.3f", motorvdisp);
-								strcat(temp, buf);
-								strcat(temp, "\"");
-								strcat(temp, end);
-								usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
-	
-							}
-							_measureFlag.startVmeasure=1;
-							break;
-							case 0xaf://stop
-							_measureFlag.startVmeasure=0;
-							_measureFlag.trigflag=0;
-							distancevaluedisp=0;
-							motorvdisp=0;
-							Enocode_stop();
-							break;
-							case 0xc1://曳引比
-								switch(uart1_dev.USART_RX_BUF[i+2]){
-									case 0xa1:
-										_measureFlag.rate=1;
-										break;
-									case 0xa2:
-										_measureFlag.rate=2;
-										break;
-									case 0xa3:
-										_measureFlag.rate=4;
-										break;
-									case 0xa4:
-										_measureFlag.rate=8;
-										break;
-								}
-								_measureFlag.page=1;
-							
-							break;
-							case 0xc2:
-								switch(uart1_dev.USART_RX_BUF[i+2]){
-									case 0xd1:
-										_measureFlag.trigselect=1;
-										break;
-									case 0xd2:
-										_measureFlag.trigselect=2;
-										break;
-									}	
-								switch(uart1_dev.USART_RX_BUF[i+3]){
-									case 0xa1:
-										_measureFlag.rate=1;
-										break;
-									case 0xa2:
-										_measureFlag.rate=2;
-										break;
-									case 0xa3:
-										_measureFlag.rate=4;
-										break;
-									case 0xa4:
-										_measureFlag.rate=8;
-										break;
-								}
-								_measureFlag.page=2;
-								{
-									u8 j=0;
-									for(j=0;j<30;j++){
-										trigvalue[j]=uart1_dev.USART_RX_BUF[i+4];
-										if(trigvalue[j]==0x00)break;
-										i++;
-									}
-									
-								}
-								_measureFlag.trigvalue=Txt2Float(trigvalue);
-							break;
-							
+				if(NULL!=strstr((const char *)bufstring,"AT+WBL")){
+					bufpoint = bufstring+strlen("AT+WBL");
+					sprintf((char *)bufstring, "%s", bufpoint);
+					STMFLASH_Write(FLASH_SAVE_ADDR,(u16*)bufstring,BLUEADDRESS_SIZE);
+					{
+						u16 temp=0x55AA;
+					STMFLASH_Write(FLASH_SAVE_ADDR+BLUEADDRESS_SIZE,&temp,1);
+					}
+					memset(datatemp,0x00,36);
+					STMFLASH_Read(FLASH_SAVE_ADDR,(u16*)datatemp,BLUEADDRESS_SIZE);
+					if(strcmp(datatemp,bufstring)==0){
+						{
+									char temp[36] = "蓝牙地址烧录成功\r\n";
+									usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
+		
 						}
-					break;	
+					}else{
+									char temp[36] = "蓝牙地址烧录失败\r\n";
+									usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
+					}
+					
 				}
-				
+				else if(NULL!=strstr((const char *)bufstring,"AT+RBL")){
+					memset(datatemp,0x00,36);
+					STMFLASH_Read(FLASH_SAVE_ADDR,(u16*)datatemp,BLUEADDRESS_SIZE);
+					{
+									char temp[36];
+									sprintf((char *)temp, "%s", "蓝牙地址为：");
+									strcat(temp,datatemp);
+									strcat(temp,"\r\n");
+									usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
+		
+					}
+				}else{
+					switch(uart1_dev.USART_RX_BUF[i])
+					{
+						case 0x9a:
+							switch(uart1_dev.USART_RX_BUF[i+1]){
+								case 0xaa://start
+								Enocode_start();
+								{
+									char temp[36] = "t3.txt=\"";
+									char buf[10];
+									char end[3]={0xff,0xff,0xff};
+									u8 i=0;
+		
+									sprintf(buf, "%d", distancevaluedisp/1000);
+									strcat(temp, buf);
+									strcat(temp, "\"");
+									strcat(temp, end);
+									usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
+		
+								}
+								{
+									char temp[36] = "t2.txt=\"";
+									char buf[10];
+									char end[3]={0xff,0xff,0xff};
+									u8 i=0;
+		
+									sprintf(buf, "%.3f", motorvdisp);
+									strcat(temp, buf);
+									strcat(temp, "\"");
+									strcat(temp, end);
+									usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
+		
+								}
+								_measureFlag.startVmeasure=1;
+								break;
+								case 0xaf://stop
+								_measureFlag.startVmeasure=0;
+								_measureFlag.trigflag=0;
+								distancevaluedisp=0;
+								motorvdisp=0;
+								Enocode_stop();
+								break;
+								case 0xc1://曳引比
+									switch(uart1_dev.USART_RX_BUF[i+2]){
+										case 0xa1:
+											_measureFlag.rate=1;
+											break;
+										case 0xa2:
+											_measureFlag.rate=2;
+											break;
+										case 0xa3:
+											_measureFlag.rate=4;
+											break;
+										case 0xa4:
+											_measureFlag.rate=8;
+											break;
+									}
+									_measureFlag.page=1;
+								
+								break;
+								case 0xc2:
+									switch(uart1_dev.USART_RX_BUF[i+2]){
+										case 0xd1:
+											_measureFlag.trigselect=1;
+											break;
+										case 0xd2:
+											_measureFlag.trigselect=2;
+											break;
+										}	
+									switch(uart1_dev.USART_RX_BUF[i+3]){
+										case 0xa1:
+											_measureFlag.rate=1;
+											break;
+										case 0xa2:
+											_measureFlag.rate=2;
+											break;
+										case 0xa3:
+											_measureFlag.rate=4;
+											break;
+										case 0xa4:
+											_measureFlag.rate=8;
+											break;
+									}
+									_measureFlag.page=2;
+									{
+										u8 j=0;
+										for(j=0;j<30;j++){
+											trigvalue[j]=uart1_dev.USART_RX_BUF[i+4];
+											if(trigvalue[j]==0x00)break;
+											i++;
+										}
+										
+									}
+									_measureFlag.trigvalue=Txt2Float(trigvalue);
+								break;
+								
+							}
+						break;	
+					}
+					}
 				(uart1_dev.USART_RX_STA)=0;
+				
 			}
 		#if 1	
 			if(_measureFlag.startVmeasure==1){
