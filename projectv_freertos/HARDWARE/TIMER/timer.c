@@ -207,13 +207,15 @@ void TIM4_IRQHandler(void)
 					if(_measureFlag.resulttrigvalueflag==1){
 						_measureFlag.resulttrigvalueflag=0;
 						_measureFlag.resulttrigvalue=motorv;
+						GPIO_ResetBits(GPIOA,GPIO_Pin_7);
+						_measureFlag.trigflag=1;
 					}
-					_measureFlag.trigflag=1;
-					printf("时间:%d ms速度:%.3f\r\n",trigtimer,motorv);
-					trigtimer=trigtimer+10;
-					//_measureFlag.ExitFlag=0;
-					distancevalue=distancevalue+distance;
-					GPIO_ResetBits(GPIOA,GPIO_Pin_7);
+					if(_measureFlag.trigflag==1){
+						printf("时间:%d ms速度:%.3f\r\n",trigtimer,motorv);
+						trigtimer=trigtimer+10;
+						//_measureFlag.ExitFlag=0;
+						distancevalue=distancevalue+distance;
+					}
 				}
 			}else if(_measureFlag.trigselect==2){
 				if(_measureFlag.ExitFlag==1){

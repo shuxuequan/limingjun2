@@ -57,7 +57,7 @@ TaskHandle_t ProcessTask_Handler;
 //任务句柄
 TaskHandle_t blprint_Task_Handler;
 //任务函数
-#define VERSION "硬件V2.5 屏V1.3"
+#define VERSION "硬件V2.6 屏V1.3"
 void process_task(void *pvParameters);
 #define SIZE sizeof(TEXT_Buffer)
 #define FLASH_SAVE_ADDR  0X0801FC00		//设置FLASH 保存地址(必须为偶数，且其值要大于本代码所占用FLASH的大小+0X08000000)
@@ -556,6 +556,21 @@ void process_task(void *pvParameters)
 									usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
 		
 								}
+								if((_measureFlag.page==1)||(_measureFlag.page==0)){
+									{
+										char temp[36] = "t10.txt=\"";
+										char buf[10];
+										char end[3]={0xff,0xff,0xff};
+										u8 i=0;
+			
+										sprintf(buf, "%3f", 0);
+										strcat(temp, buf);
+										strcat(temp, "\"");
+										strcat(temp, end);
+										usart_send_string(USART1,(uint8_t *)temp, strlen(temp));
+			
+									}
+								}	
 								_measureFlag.startVmeasure=1;
 								_measureFlag.trigreportflag=1;
 								_measureFlag.resulttrigvalueflag=1;
